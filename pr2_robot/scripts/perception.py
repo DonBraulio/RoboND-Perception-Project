@@ -24,6 +24,7 @@ from pr2_robot.srv import *
 from rospy_message_converter import message_converter
 import yaml
 
+object_list_param = None
 
 # Helper function to get surface normals
 def get_normals(cloud):
@@ -224,6 +225,8 @@ def pr2_mover(object_list):
 if __name__ == '__main__':
     rospy.init_node('perception', anonymous=True)
 
+    object_list_param = rospy.get_param('/object_list')
+
     # subscribe to point cloud
     pcl_sub = rospy.Subscriber("/pr2/world/points",
                                pc2.PointCloud2,
@@ -237,8 +240,17 @@ if __name__ == '__main__':
     object_markers_pub = rospy.Publisher("/object_markers", Marker, queue_size=1)
     detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size=1)
 
+    # Select which trained model to use according to object list
+    n_objects = len(object_list_param)
+    if n_objects == 3:
+        model_file = 'model_1.sav'
+    elif n_objects == 4:
+        model_file = 'model_2.sav'
+    else:
+        model_file = 'model_3.sav'
+
     # Load Model From disk
-    model = pickle.load(open('model_1.sav', 'rb'))
+    model = pickle.load(open(model_file, 'rb'))
     clf = model['classifier']
     encoder = LabelEncoder()
     encoder.classes_ = model['classes']
