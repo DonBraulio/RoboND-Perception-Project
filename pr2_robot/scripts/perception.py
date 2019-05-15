@@ -58,7 +58,7 @@ def passthrough_filter(cloud):
     passthrough = cloud.make_passthrough_filter()
     filter_axis = 'z'
     passthrough.set_filter_field_name(filter_axis)
-    axis_min = 0.7
+    axis_min = 0.5
     axis_max = 1.1 
     passthrough.set_filter_limits(axis_min, axis_max)
     return passthrough.filter()
@@ -69,7 +69,7 @@ def ransac_segment(cloud):
     seg = cloud.make_segmenter()
     seg.set_model_type(pcl.SACMODEL_PLANE)
     seg.set_method_type(pcl.SAC_RANSAC)
-    max_distance = 0.01
+    max_distance = 0.03
     seg.set_distance_threshold(max_distance)
     inliers, coefficients = seg.segment()
     objects = cloud.extract(inliers, negative=True)
@@ -81,7 +81,7 @@ def ransac_segment(cloud):
 def statistical_outliers_extract(cloud):
     fil = cloud.make_statistical_outlier_filter()
     fil.set_mean_k(50)
-    fil.set_std_dev_mul_thresh(1.0)
+    fil.set_std_dev_mul_thresh(0.5)
     return fil.filter()
 
 
@@ -121,14 +121,15 @@ def pcl_callback(pcl_msg):
     pcl_cloud = ros_to_pcl(pcl_msg)
 
     cloud = voxel_downsample(pcl_cloud)
+    cloud= statistical_outliers_extract(cloud)
     cloud = passthrough_filter(cloud)
+
+    pcl_filtered_pub.publish(pcl_to_ros(cloud))
 
     # segment objects/table
     cloud_objects, cloud_table = ransac_segment(cloud)
-    cloud_objects = statistical_outliers_extract(cloud_objects)
-    cloud_table = statistical_outliers_extract(cloud_table)
 
-    # Clusterize and assign colors
+    # # Clusterize and assign colors
     cluster_indices, cluster_cloud = kmean_get_clusters(cloud_objects)
 
     # Generate and publish ROS messages
@@ -176,10 +177,10 @@ def pcl_callback(pcl_msg):
     # Suggested location for where to invoke your pr2_mover() function within pcl_callback()
     # Could add some logic to determine whether or not your object detections are robust
     # before calling pr2_mover()
-    try:
-        pr2_mover(detected_objects)
-    except rospy.ROSInterruptException:
-        pass
+    # try:
+    #     pr2_mover(detected_objects)
+    # except rospy.ROSInterruptException:
+    #     pass
 
 # function to load parameters and request PickPlace service
 def pr2_mover(object_list):
@@ -224,11 +225,12 @@ if __name__ == '__main__':
     rospy.init_node('perception', anonymous=True)
 
     # subscribe to point cloud
-    pcl_sub = rospy.Subscriber("/sensor_stick/point_cloud",
+    pcl_sub = rospy.Subscriber("/pr2/world/points",
                                pc2.PointCloud2,
                                pcl_callback, queue_size=1)
 
     # publishers
+    pcl_filtered_pub = rospy.Publisher("/pcl_filtered", PointCloud2, queue_size=1)
     pcl_objects_pub = rospy.Publisher("/pcl_objects", PointCloud2, queue_size=1)
     pcl_table_pub = rospy.Publisher("/pcl_table", PointCloud2, queue_size=1)
     pcl_cluster_pub = rospy.Publisher("/pcl_cluster", PointCloud2, queue_size=1)
@@ -236,7 +238,7 @@ if __name__ == '__main__':
     detected_objects_pub = rospy.Publisher("/detected_objects", DetectedObjectsArray, queue_size=1)
 
     # Load Model From disk
-    model = pickle.load(open('model.sav', 'rb'))
+    model = pickle.load(open('model_1.sav', 'rb'))
     clf = model['classifier']
     encoder = LabelEncoder()
     encoder.classes_ = model['classes']
